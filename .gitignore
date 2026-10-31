@@ -1,0 +1,17 @@
+# secrets (never commit API keys)
+.env
+
+# virtual environment
+.venv/
+venv/
+env/
+
+# python caches
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
