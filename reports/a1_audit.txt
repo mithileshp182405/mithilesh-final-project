@@ -1,0 +1,47 @@
+== orders.csv: shape (13084, 9)
+                    dtype  missing  missing_pct
+order_id              str        0         0.00
+customer_id           str        0         0.00
+product_id            str        0         0.00
+quantity            int64        0         0.00
+order_ts              str        0         0.00
+status                str        0         0.00
+discount_pct        int64        0         0.00
+order_amount          str       53         0.41
+delivery_minutes  float64     2541        19.42
+
+== customers.csv: shape (1200, 5)
+               dtype  missing  missing_pct
+customer_id      str        0         0.00
+city             str        0         0.00
+signup_date      str        0         0.00
+age          float64       61         5.08
+gender           str       30         2.50
+
+== products.csv: shape (40, 4)
+              dtype  missing  missing_pct
+product_id      str        0          0.0
+product_name    str        0          0.0
+category        str        0          0.0
+price_inr     int64        0          0.0
+
+NOTE: order_amount shows 53 missing above only because pandas turned the text 'N/A' into NaN;
+      the real number of unparseable amounts is counted from the raw text below.
+
+audit figure                                          measured  reference  match
+orders.csv raw rows                                     13,084     13,084  OK
+orders.csv exact duplicate rows                            119        119  OK
+orders.csv rows with status pending                        656        656  OK
+orders.csv distinct order_id                            12,309     12,309  OK
+orders.csv non-numeric order_amount                        120        120  OK
+orders.csv negative delivery_minutes                       106        106  OK
+orders.csv blank delivery_minutes                        2,541      2,541  OK
+customers.csv blank age                                     61         61  OK
+customers.csv age outside 10-100                             6          6  OK
+customers.csv distinct raw city spellings                   24         24  OK
+customers.csv distinct non-blank gender spellings           10         10  OK
+customers.csv blank gender                                  30         30  OK
+
+Raw city spellings: ' Bengaluru ', ' Chennai ', ' Delhi ', ' Hyderabad ', ' Mumbai ', ' Pune ', 'BENGALURU', 'Bengaluru', 'CHENNAI', 'Chennai', 'DELHI', 'Delhi', 'HYDERABAD', 'Hyderabad', 'MUMBAI', 'Mumbai', 'PUNE', 'Pune', 'bengaluru', 'chennai', 'delhi', 'hyderabad', 'mumbai', 'pune'
+Raw gender spellings: 'F', 'FEMALE', 'Female', 'M', 'MALE', 'Male', 'f', 'female', 'm', 'male'
+Raw amount strings that are not numbers: N/A, error

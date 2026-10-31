@@ -1,0 +1,78 @@
+TASK 4 -- lapse problem (cutoff 2025-09-01; label looks at completed orders 2025-09-01 .. 2025-09-30)
+cohort = 1,156 customers (reference 1,156) | lapsed = 443 = 38.32% (reference 443 = 38.32%)
+latest order used by any feature: 2025-08-31 22:35:45 (< cutoff 2025-09-01)
+features (11): recency, frequency, monetary, avg_discount_pct, avg_delivery_minutes, cancellation_rate, fav_category, city, age, gender, tenure_days
+split: train 924 / test 232 (reference 924 / 232); lapsed in train 354, in test 89
+baseline 'always not lapsed' on test: accuracy 61.6% (reference 61.6%), lapsed-class precision 0.00, recall 0.00, F1 0.00 (reference 0)
+
+TASK 5 -- preprocessing without leakage
+learned mean of frequency inside the fitted scaler (training rows only) = 8.1147
+full-cohort mean of frequency (train + test)                      = 8.0285
+They differ because the scaler saw only the 924 training rows, never the 232 test rows, so its mean is a training statistic and the test rows
+are merely transformed with it; fitting on the whole cohort would let test information flow into the model.
+one-hot with drop='first' (k-1 columns): city: 6 levels -> 5 columns, gender: 3 levels -> 2 columns, fav_category: 5 levels -> 4 columns
+missing values in the raw feature table: 0; in the transformed train/test matrices: 0/0  -> confirmed none
+transformed width = 19 columns
+
+TASK 6 -- tuning (5-fold CV on the training rows only, scoring='f1' on the lapsed class)
+logistic regression: best {'model__C': 100} | best CV F1 0.6506 | fits 25
+random forest      : best {'model__max_depth': 8, 'model__min_samples_leaf': 10} | best CV F1 0.6811 | fits 45
+LR  CV F1 by C: C=0.01: 0.562, C=0.1: 0.646, C=1: 0.645, C=10: 0.649, C=100: 0.651
+RF  CV F1 grid: depth 3/leaf 5: 0.674; depth 3/leaf 10: 0.675; depth 3/leaf 20: 0.668; depth 5/leaf 5: 0.677; depth 5/leaf 10: 0.674; depth 5/leaf 20: 0.674; depth 8/leaf 5: 0.676; depth 8/leaf 10: 0.681; depth 8/leaf 20: 0.671
+
+untouched test set (tuning is finished), lapsed = positive class
+model                  precision  recall      F1  accuracy   confusion [[TN FP] [FN TP]]
+baseline (all 0)           0.000   0.000   0.000     0.616   [[143, 0], [89, 0]]
+logistic regression        0.644   0.652   0.648     0.728   [[111, 32], [31, 58]]
+random forest              0.659   0.652   0.655     0.737   [[113, 30], [31, 58]]
+
+SELECTED MODEL: random forest (test F1 0.655, recall 0.652, precision 0.659)
+Justification: missing a customer who is about to lapse (a false negative) loses all of that customer's future revenue and a win-back later is
+far costlier than prevention, whereas wrongly targeting a loyal customer (a false positive) only costs a small coupon or message; so recall on the
+lapsed class matters at least as much as precision, and F1 balances the two. The random forest has the higher test F1 and catches
+65% of lapsing customers at 66% precision, well above the 0 recall of the do-nothing baseline.
+Consistency check: cross-validation on the training rows ranks the models the same way (random forest has the higher CV F1: RF 0.681 vs LR 0.651), so the choice does not rest on the test set alone.
+
+TASK 7 -- class-balance experiment (over-sample lapsed TRAINING rows with replacement, random_state=42; test set unchanged)
+training rows 924 -> 1140: lapsed 354 -> 570, not lapsed 570 (216 duplicated lapsed rows added)
+logistic regression      precision  recall      F1   confusion
+un-balanced (best C)         0.644   0.652   0.648   [[111, 32], [31, 58]]
+balanced by over-sampling     0.589   0.854   0.697   [[90, 53], [13, 76]]
+change: precision -0.055, recall +0.202, F1 +0.049 -> recall moved most
+Meaning for retention: over-sampling makes the model flag far more customers as lapsing, so the team reaches many more of the real leavers but
+also contacts more loyal customers by mistake (precision does not improve). It is the right setting only when a missed leaver costs much more than
+a wasted offer; it changes where the threshold effectively sits, it does not add information.
+
+TASK 8a -- five most important features of the best random forest (feature_importances_)
+  frequency              0.280  how often they order shows habit strength
+  monetary               0.271  how much they spend marks their value and attachment
+  recency                0.115  the longer since the last order, the likelier the customer is to stay away
+  avg_delivery_minutes   0.061  slow deliveries may push customers away
+  cancellation_rate      0.052  frequent cancellations signal friction
+
+logistic regression coefficients (numeric features standardised; positive = raises the odds of lapsing, others held fixed)
+  recency    coefficient +0.040 (positive, weak) -> customers who have been silent longer are somewhat likelier to lapse, but the effect is small once frequency is known
+  frequency  coefficient -1.698 (negative, strong) -> habitual buyers who order often are far less likely to lapse -- the strongest protective signal
+  monetary   coefficient +0.285 (positive, weak) -> for the SAME number of orders, a higher total spend means few, large baskets (big-ticket electronics buyers who order about once a month), so a month without an order is more likely -- this group needs its own retention offer
+  (frequency and monetary are correlated -- r = 0.44 on the training rows -- so each sign is conditional on the other; read the two together: 'many orders' protects, 'big baskets at a given order count' signals a slower, high-ticket rhythm.)
+
+TASK 8b -- saved outputs/lapse_model.joblib (random forest pipeline); reloaded predictions identical to the original on all 232 test rows: True; probabilities identical: True
+
+TASK 8c -- Premium customers in the test set: 40; retention list = top 10 by predicted lapse probability
+customer_id  lapse_probability  actually_lapsed
+      C0862             0.4910                0
+      C1112             0.4841                0
+      C0060             0.4798                0
+      C0802             0.4796                0
+      C1008             0.4778                0
+      C1000             0.4624                0
+      C0525             0.4597                1
+      C0133             0.4562                0
+      C0267             0.4525                0
+      C0167             0.4522                0
+of the 10 listed, 1 truly lapsed in September 2025
+CAVEAT: the Premium flag comes from the whole-window RFM (April-September), which includes the September window that defines the lapse label,
+so the retention list is illustrative and not a leakage-free evaluation (the model's own features still use only orders before the cutoff).
+
+LEAKAGE STATEMENT: no encoder, scaler or resampler saw test rows (all fitted inside the pipeline on training rows; over-sampling copied training rows only);
+no order dated on or after 2025-09-01 entered any feature; the segment labels from task 3 were not used as features.

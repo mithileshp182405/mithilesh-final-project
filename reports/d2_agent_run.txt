@@ -1,0 +1,45 @@
+TASK 5 -- five tools (TOOLS_SPEC) and TOOL_MAP
+  get_order          params ['order_id']  -- Look up one order (status, amount, delivery minutes) in the Instamart database by its order id.
+  search_policy      params ['query']  -- Search the support policy documents and return the three most relevant passages.
+  calculate_refund   params ['order_amount', 'delivery_minutes']  -- Compute the refund in INR from the order amount and delivery minutes using the refund rules.
+  issue_refund       params ['order_id', 'refund_inr']  -- Issue an automatic refund of at most INR 1000 and record it in the refund ledger.
+  escalate_to_human  params ['order_id', 'refund_inr']  -- Send a refund above INR 1000 to a human support lead and record it in the ledger.
+  get_order(unknown id)            -> {'error': 'order not found'}
+  calculate_refund(500, 46 min)    -> {'refund_inr': 500.0}   (rule: more than 45 minutes = full refund, else 0)
+  calculate_refund(500, 45 min)    -> {'refund_inr': 0.0}   (rule: more than 45 minutes = full refund, else 0)
+  calculate_refund(500, 12 min)    -> {'refund_inr': 0.0}   (rule: more than 45 minutes = full refund, else 0)
+  calculate_refund(1999, 60 min)    -> {'refund_inr': 1999.0}   (rule: more than 45 minutes = full refund, else 0)
+  issue_refund(1500) is refused by the tool itself -> {'error': 'refund above INR 1000 must be escalated to a human'}
+
+TASK 6 -- the seven scenarios of data/raw/agent_scenarios.csv (default limits: 6 model calls, 6000 tokens, 10 s)
+scenario  expected                  status refund_inr expected_refund  model_calls  tokens_used                                                                     tools match
+      S1    REFUND                  REFUND     128.25          128.25            5         1122                  get_order, search_policy, calculate_refund, issue_refund    OK
+      S2    REFUND                  REFUND     135.00          135.00            5         1122                  get_order, search_policy, calculate_refund, issue_refund    OK
+      S3  ESCALATE                ESCALATE    1999.00         1999.00            5         1109             get_order, search_policy, calculate_refund, escalate_to_human    OK
+      S4    DENIED                  DENIED       0.00            0.00            4          785                                get_order, search_policy, calculate_refund    OK
+      S5    DENIED                  DENIED       0.00            0.00            3          472                                                  get_order, search_policy    OK
+      S6 NOT_FOUND               NOT_FOUND       0.00            0.00            2          162                                                                 get_order    OK
+      S7  FALLBACK FALLBACK_MAX_ITERATIONS       0.00            0.00            6         3270 search_policy, search_policy, search_policy, search_policy, search_policy    OK
+S7 used 3270 estimated tokens for all six model calls, below the default limit of 6000, so it ends with FALLBACK_MAX_ITERATIONS and not earlier.
+S7 hand-off text: HANDOFF TO HUMAN AGENT (no final answer after 6 model calls; the 6th call requested search_policy which was not executed). Scenario S7, request: '[LOOP] Refund order ORD-100048.'. Tools executed so far: search_policy, search_policy, search_policy, search_policy, search_policy. Last observation: {"results": [{"source": "refund_policy.txt", "score": 0.366, "text": "Refund Policy. A refund can be requested only for . No further automatic action was taken.
+ledger after the seven scenarios: [('S1-main', 'issue_refund', 128.25), ('S2-main', 'issue_refund', 135.0), ('S3-main', 'escalate_to_human', 1999.0)]
+
+TASK 7 -- stop safely
+(b) S1 with token_limit=200 -> FALLBACK_TOKEN_LIMIT after 3 model calls and 489 tokens; tools executed: ['get_order', 'search_policy']
+    hand-off: HANDOFF TO HUMAN AGENT (token limit 200 exceeded: 489 tokens after 3 model calls). Scenario S1, request: 'My order ORD-100048 reached me very late. I would like a refund.'. Tools executed so far: get_order, search_policy. Last observation: {"results": [{"source": "refund_policy.txt", "score": 0.2719, "text": "order is delivered in more than 45 minutes, the c. No further automatic action was taken.
+(c) S1 with time_limit_seconds=0 -> FALLBACK_TIMEOUT after 0 model calls (it stops before the first call); steps so far: 0
+    hand-off: HANDOFF TO HUMAN AGENT (time limit of 0 s reached). Scenario S1, request: 'My order ORD-100048 reached me very late. I would like a refund.'. Tools executed so far: none. Last observation: n/a. No further automatic action was taken.
+(a) S7 default run -> FALLBACK_MAX_ITERATIONS (six model calls, see task 6); (b) and (c) executed no refund tool: ledger unchanged at 3 lines
+
+TASK 8 -- resumable run: S1 crashes right after its SECOND tool execution, then resume_agent(run_id)
+crash: simulated crash right after tool execution #2 of run S1-crash-demo
+checkpoint state/S1-crash-demo.json: run_id=S1-crash-demo, scenario_id=S1, step=2, tokens_used=192, llm_calls=2, tools_executed=['get_order', 'search_policy'], messages=6, finished=False
+after resume: status REFUND, refund INR 128.25, model calls 5, tokens 1122
+tools executed across the crash and the resume, in order: ['get_order', 'search_policy', 'calculate_refund', 'issue_refund']
+independent execution log: 4 executions, 4 distinct -> none repeated; same total tokens (1122) and calls (5) as the uninterrupted S1 run
+ledger lines for this run: [('issue_refund', 128.25)]
+calling resume_agent again on the finished run returns the stored result and executes nothing
+ledger now holds 4 lines (S1-main, S2-main, S3-main and the crash demo's own S1 request, each tied to its run id)
+
+TASK 9 -- ReAct versus plan-and-execute (203 words, limit 250)
+Measured ReAct cost: S1 5 model calls / 1122 tokens, S4 4, S5 3, S6 2 / 162 tokens; every call re-sends the whole history, so tokens grow faster than calls. A plan-and-execute design would ask once for the full step list and run the tools in code: for S1 that is about 2 calls and roughly 360 tokens (my estimate from the same prompts and observations; the mock has no such mode), cheaper than 1122. The saving disappears when an observation is unexpected. For S6 (NOT_FOUND) and S5 (cancelled order) the fixed plan is already wrong after step 1 or 2, so it needs a replanning call: about 3 calls against ReAct's 2 and 3. A plan written before seeing the order also contains issue_refund before anyone knows the order is eligible, so every plan needs an extra guard that blocks side-effecting steps. I would choose ReAct for this refund workflow: the paths are short (at most 5 calls), the branches depend on what each lookup returns (not found, cancelled, on time, above INR 1000), money moves only after the evidence is seen, and the iteration, token and time limits bound the worst case (S7). Plan-and-execute pays off for long, predictable pipelines.

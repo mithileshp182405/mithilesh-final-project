@@ -1,0 +1,23 @@
+CLEAN CUSTOMERS
+C1 city: strip + title case -> 476 of 1200 values changed; 6 distinct cities remain (was 24)
+C2 gender: mapped to male/female/unknown -> 950 values changed; blank -> unknown: 30
+C3 age: 6 impossible values (outside 10-100) set to missing; 67 missing ages filled with the city median (groupby + transform); 0 missing remain
+C4 signup_date: converted to datetime64 for 1200 rows (2024-01-01 .. 2025-03-31)
+
+CLEAN ORDERS
+O0 raw rows: 13,084
+O1 order_ts: converted to datetime64 for 13,084 rows (range 2025-04-01 07:07:28 .. 2025-09-30 22:46:26)
+O2 exact duplicates: 119 rows removed -> 12,965 rows
+O3 latest record per order_id: 656 superseded rows removed (656 pending rows existed before, 0 remain) -> 12,309 rows, 12,309 distinct order_id
+O4 order_amount: unparseable ('N/A', 'error') turned to missing = 112 values; filled from price_inr x quantity x (1 - discount_pct/100), rounded to 2 decimals; 0 missing remain
+O5 delivery_minutes: 105 negative values set to missing; 774 missing values of completed orders filled with the median of their product category among completed orders; cancelled orders left missing on purpose
+   category medians used: Dairy=25, Electronics=25, Grocery=25, Personal Care=25.5, Snacks=25
+
+rows 12,309 | completed 11,110 | cancelled 1,199 | pending 0
+missing order_amount 0 | missing delivery (completed) 0 | missing delivery (cancelled) 1,199
+completed revenue INR 2,998,668.80
+customers by city: Pune 227, Delhi 210, Bengaluru 197, Chennai 191, Hyderabad 191, Mumbai 184
+customers by gender: female 610, male 560, unknown 30
+age: missing 0, min 18, max 60, non-integer ages 21
+
+STORED data/clean/*.csv and data/instamart.db -> table row counts {'customers': 1200, 'products': 40, 'orders': 12309}

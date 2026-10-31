@@ -1,0 +1,41 @@
+(a) PIVOT TABLE with margins=True (rebuilds SQL Q2)
+category       Dairy  Electronics    Grocery  Personal Care     Snacks       Total
+city                                                                              
+Bengaluru   87075.05    233909.45  110915.65       20193.85   71549.40   523643.40
+Chennai     78301.80    195508.80   93817.45       27675.40   68325.70   463629.15
+Delhi      117271.70    158549.10  112658.05       23471.50   90879.45   502829.80
+Hyderabad   83731.00    228913.10  109475.40       24800.05   81670.35   528589.90
+Mumbai      75209.85    214738.40   78970.15       38018.00   72122.10   479058.50
+Pune        90349.55    187629.25  108456.60       34275.15   80207.50   500918.05
+Total      531938.95   1219248.10  614293.30      168433.95  464754.50  2998668.80
+pivot grand total = INR 2,998,668.80 | SQL total = INR 2,998,668.80 | equal: True
+largest cell: Bengaluru / Electronics = INR 233,909.45
+
+per-city named aggregation of completed order_amount
+           total_inr  mean_inr  n_orders
+city                                    
+Bengaluru  523643.40    276.47      1894
+Chennai    463629.15    272.72      1700
+Delhi      502829.80    243.62      2064
+Hyderabad  528589.90    284.95      1855
+Mumbai     479058.50    297.00      1613
+Pune       500918.05    252.48      1984
+
+(b) DISTRIBUTION of completed order_amount (INR)
+n = 11,110 | mean 269.91 | median 135.00 | std 432.07 | min 12.00 | max 3998.00
+skewness (pandas, sample) = 4.61
+Q1 64.80 | Q3 297.00 | IQR 232.20 | lower fence -283.50 | upper fence 645.30
+outliers above upper fence: 897 | below lower fence: 0
+
+correlation matrix (completed orders)
+                  order_amount  discount_pct  quantity  delivery_minutes
+order_amount             1.000        -0.095     0.087            -0.003
+discount_pct            -0.095         1.000    -0.000            -0.010
+quantity                 0.087        -0.000     1.000            -0.013
+delivery_minutes        -0.003        -0.010    -0.013             1.000
+pairs by absolute correlation: order_amount & discount_pct = -0.095; order_amount & quantity = +0.087; quantity & delivery_minutes = -0.013
+
+outlier share of orders: 8.1% | category mix of outliers (%): {'Electronics': 70.8, 'Dairy': 18.5, 'Grocery': 5.8, 'Personal Care': 4.9}
+
+ANSWER (104 words, limit 200):
+What is it about? Quick-commerce orders from six Indian cities, April-September 2025: 11,110 completed orders worth INR 2,998,668.80. Distribution: order_amount is strongly right-skewed (mean 269.91 against median 135, skewness 4.61); half of all orders sit between INR 65 and INR 297. Outliers: 897 orders (8.1%) exceed the upper fence of INR 645 and none fall below the lower one; they are mostly electronics purchases, genuine high-value baskets rather than errors, so I keep them. Relationships: all correlations are weak; the largest in absolute value is order_amount with discount_pct (-0.095), just ahead of order_amount with quantity (+0.087). Correlation of this size does not establish causation.

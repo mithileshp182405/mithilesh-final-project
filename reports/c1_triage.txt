@@ -1,0 +1,73 @@
+TASK 1 -- input guardrails (checked before any model call)
+empty / whitespace-only tickets -> skipped_empty: 4 (reference 4)
+tickets with est_tokens > 400 -> flagged_long: 4 (reference 4); their estimated tokens: [734] (reference 734)
+eligible for the model: 156 (reference 156)
+
+TASK 2 -- redaction (email -> [EMAIL], then phone -> [PHONE], then order id -> [ORDER_ID])
+substitutions: emails 55 (reference 55) | phones 91 (reference 91) | order ids 132 (reference 132) | total 278 (reference 278)
+re-applying the three patterns to the redacted texts finds 0 matches (reference 0)
+example T0061 before: Extra money was deducted for order ORD-108532, please check the bill. Contact user61@example.com.
+example T0061 after : Extra money was deducted for order [ORDER_ID], please check the bill. Contact [EMAIL]
+
+TASK 3 -- two prompts
+zero-shot   24 words =  32 estimated tokens | CLASSIFY + 4 categories + JSON-only form present: True
+few-shot    94 words = 123 estimated tokens | CLASSIFY + 4 categories + JSON-only form present: True
+few-shot prompt: line 'EXAMPLES:' + 4 labelled examples (one per category, including fraud); zero-shot has no 'EXAMPLES:'
+
+TASK 4 -- resilient calls (mock_llm.reset() before each run; <=3 retries per ticket; wait = 0.05 x 2^n x uniform(0.9, 1.15))
+zero-shot  TransientLLMErrors 19 (reference 19) | retries logged 19 | permanent errors 0 | retry numbers seen [0] | waits 0.0453..0.0562 s (allowed for retry 0: 0.0450..0.0575 s)
+few-shot   TransientLLMErrors 19 (reference 19) | retries logged 19 | permanent errors 0 | retry numbers seen [0] | waits 0.0453..0.0562 s (allowed for retry 0: 0.0450..0.0575 s)
+first three retry log lines of the zero-shot run:
+   retry ticket=T0002 retry_number=0 wait=0.0530s
+   retry ticket=T0116 retry_number=0 wait=0.0453s
+   retry ticket=T0153 retry_number=0 wait=0.0484s
+full retry logs of both runs: reports/c1_retry_log.txt
+
+TASK 5 -- validation of every answer (JSON first, then keyword extraction with re.findall(r'[a-z]+'), never guess)
+zero-shot  classified_json 135 | classified_keyword 12 | flagged_invalid_output 9 | skipped_empty 4 | flagged_long 4   (reference 135 / 12 / 9)
+few-shot   classified_json 135 | classified_keyword 12 | flagged_invalid_output 9 | skipped_empty 4 | flagged_long 4   (reference 135 / 12 / 9)
+Measured on the same 156 replies, a plain whitespace split gives classified_json 135 / classified_keyword 0 / flagged_invalid_output 21 instead of 135 / 12 / 9, because it cannot split 'billing-related'.
+
+TASK 6 -- zero-shot vs few-shot (no token budget)
+   prompt  classified  correct  accuracy_pct  total_tokens  tokens_per_classified_ticket  tokens_per_call
+zero-shot         147      126          85.7          9400                          63.9             60.3
+ few-shot         147      147         100.0         23596                         160.5            151.3
+
+zero-shot confusion table (rows = true category, columns = predicted; classified tickets only)
+                  billing  delivery  technical  fraud
+true \ predicted                                     
+billing                38         0          0      0
+delivery                0        36          0      0
+technical              10         0         29      0
+fraud                  11         0          0     23
+zero-shot errors: true fraud predicted billing: 11, true technical predicted billing: 10 (total 21)
+all 21 of 21 zero-shot errors contain a billing keyword (charged / payment ...) that the zero-shot mock checks first
+few-shot errors: 0
+
+WHEN IS FEW-SHOT WORTH THE EXTRA TOKENS?
+The few-shot prompt costs 160.5 tokens per classified ticket against 63.9 for zero-shot (+96.6, about 151% more) and in return accuracy rises from 85.7% to 100.0%, i.e. all 21 of the
+zero-shot mistakes disappear. The mistakes are not random: zero-shot sends every fraud and technical ticket that mentions a charge or payment to billing, and a
+mis-filed fraud ticket misses the 2-hour security SLA, so for the high-stakes categories 97 extra tokens per ticket is cheap insurance. When tickets are
+short, the categories are unambiguous and a wrong label is cheap to fix, the cheaper zero-shot prompt is enough.
+Honest caveat: the mock switches its keyword priority when the system prompt contains 'EXAMPLES:', so the 100% measures this mock's behaviour,
+not in-context learning; with a real model the gain must be re-measured on held-out tickets.
+
+TASK 7a -- token budget demo (zero-shot prompt)
+TOKEN_BUDGET = 6000: tokens spent 6038 | tickets with status budget_exhausted = 56 (at least one required; reference ~51 for a 29-token prompt) | first exhausted row index 104 | model calls made 100
+every budget_exhausted ticket is routed to human_review: True
+the budget is checked BEFORE each call, so the last allowed call may overshoot it slightly: spent 6038 against a budget of 6000 (overshoot 38, at most one call = 71 tokens)
+
+TASK 7b -- outputs/triage_results.csv: few-shot, TOKEN_BUDGET = 100000, 164 rows, tokens spent 23596 (budget not reached)
+status counts : classified_json 135, classified_keyword 12, flagged_invalid_output 9, skipped_empty 4, flagged_long 4
+route counts  : support_queue 102, security_team 34, human_review 17, premium_desk 11
+priority      : NORMAL 119, HIGH 45
+priority       HIGH  NORMAL
+route                      
+human_review      0      17
+premium_desk     11       0
+security_team    34       0
+support_queue     0     102
+routing re-derived independently from the file matches for all 164 rows; tickets whose customer has no segment row (treated as not premium): 0
+
+RULE-VALIDATED vs HUMAN: 147 tickets passed output validation (classified_json 135, classified_keyword 12) and were routed by rule; 17 went to human review (skipped_empty 4, flagged_long 4, flagged_invalid_output 9, budget_exhausted 0).
+RISK NOTE: 5 true fraud ticket(s) ended in human_review at NORMAL priority because their model answer failed validation (T0116, T0016, T0084, T0148, T0076); the brief's rules give them no HIGH priority -- see Limitations.

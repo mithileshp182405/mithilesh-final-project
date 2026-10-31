@@ -1,0 +1,47 @@
+TASK 1 -- RFM (snapshot 2025-10-01 00:00:00, completed orders only)
+customers = 1,175 (reference 1,175)
+recency   median 19 | min 0 | max 180   (reference 19 / 0 / 180)
+frequency mean 9.46 | max 33   (reference 9.46 / 33)
+monetary  mean 2552.06 | max 14766.55   (reference 2,552.06 / 14,766.55)
+
+TASK 2 -- K-means sweep (StandardScaler on R, F, M; n_init=10, random_state=42)
+ K  inertia  silhouette  ref_inertia  ref_silhouette  inertia_drop_pct
+ 2   1820.8       0.465       1820.8           0.465               NaN
+ 3   1268.2       0.445       1268.2           0.445              30.3
+ 4    743.1       0.526        743.1           0.526              41.4
+ 5    617.4       0.480        617.4           0.481              16.9
+ 6    503.2       0.482        503.2           0.482              18.5
+ 7    408.5       0.416        408.5           0.416              18.8
+ 8    366.5       0.412        366.5           0.412              10.3
+all seven (inertia, silhouette) pairs are within the stated tolerances of the reference.
+
+Elbow: inertia falls by 30% from K=2 to 3 and by 41% from K=3 to 4, but only 17% from K=4 to 5 and 18% from K=5 to 6 -> the bend (elbow) is at K=4.
+Silhouette among the allowed K: K=3 0.445, K=4 0.526, K=5 0.480 -> K=4 is clearly the most separated.
+CHOSEN K = 4: best silhouette, elbow at 4, and four segments is a number the campaign team can staff and act on
+(Premium big-ticket / loyal regulars / lapsing / occasional) whereas five or more would split the loyal group into near-duplicates.
+Why K=8 always has lower inertia than K=2: inertia is the within-cluster sum of squared distances, and every extra centroid can
+only move points closer to a centre, so inertia falls monotonically down to 0 at K=n. A lower value therefore says nothing about
+quality by itself -- it must be weighed against the elbow, the silhouette (cluster separation) and whether the groups are actionable.
+
+TASK 3a -- segment profile (cluster numbers are arbitrary labels with no ordering)
+            size  mean_recency  mean_frequency  mean_monetary
+segment_id                                                   
+0            436         28.86            3.77        1057.62
+1            138         24.12            6.77        7129.70
+2            419          8.77           19.40        3410.02
+3            182        109.04            2.20         685.99
+
+TASK 3b -- names, Premium flag and recommended action
+  segment 0: Occasional Shoppers    n=436 | R  28.9 d | F   3.8 | M INR  1057.62
+      action: Light-touch nudges (weekly digest, first-order-of-the-week coupon) to move them toward the regular rhythm.
+  segment 1: Premium Big-Ticket     n=138 | R  24.1 d | F   6.8 | M INR  7129.70  <- PREMIUM (highest mean monetary)
+      action: Early access to new electronics, free-delivery perks and a 1-hour premium support desk; protect them from churn first.
+  segment 2: Loyal Regulars         n=419 | R   8.8 d | F  19.4 | M INR  3410.02
+      action: Reward consistency with a points/streak scheme and basket-builder offers on grocery and dairy to raise basket size.
+  segment 3: Lapsing Low-Spenders   n=182 | R 109.0 d | F   2.2 | M INR   685.99
+      action: Win-back push within days of going quiet: a time-limited coupon and a reminder of their usual items.
+
+TASK 3c -- PCA on the scaled RFM matrix: explained_variance_ratio_ = 0.634, 0.218; total 0.852 (reference 0.634, 0.218, 0.852 +-0.02)
+Two components keep about 85% of the variance of the three standardised RFM columns, so a 2-D picture of the segments is faithful.
+
+wrote outputs/customer_segments.csv (1,175 rows); premium customers = 138

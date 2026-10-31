@@ -1,0 +1,69 @@
+Q1 WHERE then HAVING -- customers whose completed orders above INR 500 total more than INR 8,000
+   rows = 30 (reference 30)
+customer_id  n_big_orders  total_big_order_inr
+      C0693             6             13776.55
+      C0082             5             12317.70
+      C0743             5             12266.85
+      C0525             6             12241.30
+      C0291             6             12150.70
+
+Q2 three-table join -- revenue by city and category
+   rows = 30 (reference 30); total = INR 2,998,668.80 (reference 2,998,668.80)
+   largest cell: Bengaluru / Electronics = INR 233,909.45 (reference Bengaluru / Electronics 233,909.45)
+
+Q3 scalar subquery -- products priced above the catalogue average
+   catalogue average price = INR 289.32; products above it = 11 (reference 11)
+product_id        product_name      category  price_inr
+      P038   Bluetooth Speaker   Electronics       1999
+      P033    Wireless Earbuds   Electronics       1499
+      P034 Power Bank 10000mAh   Electronics       1299
+      P036   Phone Charger 20W   Electronics        799
+      P037          Smart Bulb   Electronics        599
+      P040    Memory Card 64GB   Electronics        549
+      P032       Sunscreen 50g Personal Care        399
+      P030   Body Lotion 400ml Personal Care        350
+      P039         Phone Stand   Electronics        349
+      P014          Ghee 500ml         Dairy        340
+      P035      USB-C Cable 1m   Electronics        299
+
+Q4 LEFT JOIN -- customers with no completed order
+   rows = 25 (reference 25)
+
+Q5 CTE -- customers whose total completed spend is above the average customer total
+   rows = 550 (reference 550); average = INR 2,552.06 (reference 2,552.06)
+
+Q6 ranking window functions -- top customer per city
+     city customer_id  total_spend
+Bengaluru       C0082     12856.20
+  Chennai       C0930     10151.40
+    Delhi       C0291     13742.60
+Hyderabad       C0743     12730.05
+   Mumbai       C0693     14766.55
+     Pune       C0426     10377.10
+   rows where RANK() differs from ROW_NUMBER(): 8 (reference 8)
+   tied customers (same city, same spend):
+     city customer_id  total_spend  spend_rank  spend_dense_rank  spend_row_number
+Bengaluru       C0692      2598.00          99                99                99
+Bengaluru       C0734      2598.00          99                99               100
+Bengaluru       C0680       135.00         179               178               179
+Bengaluru       C0723       135.00         179               178               180
+   Mumbai       C0988       396.00         149               149               149
+   Mumbai       C1053       396.00         149               149               150
+   Mumbai       C0156       280.00         160               159               160
+   Mumbai       C0608       280.00         160               159               161
+     Pune       C0124      3236.95          74                74                74
+     Pune       C1064      3236.95          74                74                75
+     Pune       C0041       285.00         189               188               189
+     Pune       C0057       285.00         189               188               190
+     Pune       C0936       285.00         189               188               191
+     Pune       C0223       114.00         209               206               209
+     Pune       C0276       114.00         209               206               210
+
+Q7 running total -- daily completed revenue
+   daily rows = 183 (reference 183); last cumulative = INR 2,998,668.80 (reference 2,998,668.80)
+       day  revenue_inr  cumulative_revenue_inr
+2025-09-28     12689.85              2969143.55
+2025-09-29     14022.15              2983165.70
+2025-09-30     15503.10              2998668.80
+
+SQL reference checks passed: 12 of 12
